@@ -1,0 +1,176 @@
+
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<title>MaintAI : client web</title>
+
+<style>
+  body {
+    font-family: system-ui, sans-serif;
+    max-width: 520px;
+    margin: 40px auto;
+    padding: 0 16px;
+  }
+
+  label {
+    display: block;
+    margin-top: 12px;
+  }
+
+  input {
+    width: 100%;
+    padding: 6px;
+    box-sizing: border-box;
+  }
+
+  button {
+    margin-top: 16px;
+    padding: 8px 16px;
+    cursor: pointer;
+  }
+
+  #result {
+    margin-top: 20px;
+    padding: 12px;
+    border-radius: 6px;
+  }
+
+  .ok { background: #e6f4ea; }
+  .alert { background: #fde7e7; }
+  .err { background: #fff4e5; }
+</style>
+</head>
+
+<body>
+
+<h1>MaintAI</h1>
+
+<label>
+  URL de l'API
+  <input id="url" value="http://localhost:8000">
+</label>
+
+<label>
+  Clé API
+  <input id="key" type="password">
+</label>
+
+<label>
+  Température (°C)
+  <input id="temperature_c" type="number" step="0.1" value="72">
+</label>
+
+<label>
+  Vibration (mm/s)
+  <input id="vibration_mm_s" type="number" step="0.1" value="6">
+</label>
+
+<label>
+  Charge (%)
+  <input id="load_pct" type="number" step="1" value="85">
+</label>
+
+<label>
+  Heures de fonctionnement
+  <input id="runtime_hours" type="number" step="100" value="15000">
+</label>
+
+<button id="go">Prédire</button>
+
+<div id="result"></div>
+
+<script>
+
+const FEATURES = [
+  "temperature_c",
+  "vibration_mm_s",
+  "load_pct",
+  "runtime_hours"
+];
+
+// Fonction pour afficher le résultat
+const show = (cls, text) => {
+  const r = document.getElementById("result");
+  r.className = cls;
+  r.textContent = text;
+};
+
+// Événement du bouton Prédire
+document.getElementById("go").addEventListener("click", async () => {
+
+  // 1. Récupérer les données du formulaire
+  const reading = Object.fromEntries(
+    FEATURES.map(f => [
+      f,
+      Number(document.getElementById(f).value)
+    ])
+  );
+
+  // 2. Récupérer l'URL et la clé API
+  const adresse = document.getElementById("url").value.trim().replace(/\/+$/, "");
+  const cle = document.getElementById("key").value.trim();
+
+  if (!adresse || !cle) {
+    show("err", "Veuillez saisir l'URL de l'API et la clé API.");
+    return;
+  }
+
+  // 3. Envoyer la requête à FastAPI
+  try {
+
+    const resp = await fetch(`${adresse}/v1/predict`, {
+      method: "POST",
+
+      headers: {
+        "Content-Type": "application/json",
+        "X-API-Key": cle
+      },
+
+      body: JSON.stringify(reading)
+    });
+
+    // 4. Récupérer la réponse JSON
+    const data = await resp.json();
+
+    // 5. Vérifier les erreurs HTTP
+    if (!resp.ok) {
+      show(
+        "err",
+        `Erreur HTTP ${resp.status} : ${data.detail || "Erreur inconnue"}`
+      );
+      return;
+    }
+
+    // 6. Afficher le résultat
+    const probability = (data.failure_probability * 100).toFixed(2);
+
+    if (data.alert) {
+      show(
+        "alert",
+        `⚠️ ALERTE ! Risque de panne : ${probability}%`
+      );
+    } else {
+      show(
+        "ok",
+        `✅ Situation normale. Risque de panne : ${probability}%`
+      );
+    }
+
+  } catch (e) {
+
+    // 7. Gérer les erreurs réseau et CORS
+    show(
+      "err",
+      "Impossible de contacter l'API. Vérifiez que FastAPI est démarré et que CORS est correctement configuré."
+    );
+
+    console.error(e);
+  }
+
+});
+
+</script>
+
+</body>
+</html>
